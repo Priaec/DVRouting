@@ -35,21 +35,33 @@ class Server:
       return numServers, numNeighbors, lookup, table, id
     
     def recieveTable(self, table):
-      return
+      #if i have not seen this key in my table, then add it in, otherwise do nothing
+      for label in table:
+        if label not in self.routingTable:
+          self.routingTable[label] = table[label]
+      return self.updateTable(table)
 
     def updateTable(self, table):
       #compare results with given entries
-      for entry in table:
+      for label in table:
         #entries are denotes as pair keys
-        neighbor, cost = table[entry]
+        neighbor, cost = table[label]
         #compare this result with mine
-        currentNeighbor, currentCost = self.routingTable[entry]
-        if(cost < currentCost):
-          self.routingTable[entry] = (neighbor, cost)
-      return
+        print(self.routingTable[label])
+        currentNeighbor, currentCost = self.routingTable[label]
+        if((cost < currentCost) or (label not in self.routingTable)):
+          self.routingTable[label] = (neighbor, cost)
+      return self.prettyPrintTable()
     
-    def sendTable(self, table):
-      return
+    def sendTable(self):
+      #send table to nearest neighbors
+      #send the keys that are respective to me, i.e. keys that start with 1 (id)
+      result = {}
+      for label in self.routingTable:
+        if(label[0] != self.id):
+          return
+        result[label] = self.routingTable[label]
+      return result
     
     def getDetails(self):
       print('My ID:', self.id)
@@ -67,12 +79,26 @@ class Server:
       print('Routing Table  (source,dest)(neighbor,cost)\n-------------')
       for label in self.routingTable:
         print(label,'    ', self.routingTable[label])
-        
+
+    def getNeighbors(self):
+      neighbors = []
+      for label in self.routingTable:
+        if(label[1] == self.routingTable[label][0]):
+          neighbors.append(label[1])
+      return neighbors
+
 #pull the file name from the command line
 path = sys.argv[1]
 print("file:", path)
-#create the server
-myServer = Server(path)
+#create the servers, for now just create all in one terminal for algorithm testing
+server = Server(file=path)
+server2 = Server(file='topology2.txt')
 #every 10 seconds, send the routing table updates
 while True:
-  time.sleep(5)
+  time.sleep(2)
+  for neighbor in server.getNeighbors():
+    send = server.sendTable()
+    print(send)
+    #send server2 table to server 1
+    send2 = server2.sendTable()
+    server.recieveTable(send2)
