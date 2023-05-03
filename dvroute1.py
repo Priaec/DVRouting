@@ -11,7 +11,20 @@ class Server:
     #construct the server
     def __init__(self, file):
       self.numServers, self.numNeighbors, self.lookup, self.routingTable, self.id = self.readConfig(file)
-      self.getDetails()
+      self.ip, self.port = self.getIPPort()
+      #create the socket to listen
+      client_socket = self.create_socket(int(self.port))
+      server_thread = threading.Thread(target=self.server, args=(client_socket,))
+      server_thread.daemon = True
+      server_thread.start()
+
+      #create separate threads that will handle their own connection between this server and the remote port
+      print(f'remote ports: {self.getRemotePorts()}')
+      client_thread = threading.Thread(target=self.client, args=(self.getRemotePorts(),))
+      client_thread.start()
+      client_thread.join()
+
+      server_thread.join()
       return
     
     #read initialization file
@@ -48,6 +61,7 @@ class Server:
       #compare results with given entries
       for label in table:
         #entries are denotes as pair keys
+        #if the value does not exist, just add it into the dictionary
         neighbor, cost = table[label]
         #compare this result with mine
         print(self.routingTable[label])
@@ -66,6 +80,12 @@ class Server:
         result[label] = self.routingTable[label]
       return result
     
+    #return the ip and port of the current server
+    def getIPPort(self):
+       for label in self.lookup:
+          if(label == self.id):
+             return self.lookup[label]
+
     def getDetails(self):
       print('My ID:', self.id)
       print('Num Servers:', self.numServers)
@@ -76,7 +96,7 @@ class Server:
 
     def printLookup(self):
       for label in self.lookup:
-        print(label, '   ', self.lookup[label])
+        print(label, '   ', self.lookup[label], self.lookup[label][1])
 
     def prettyPrintTable(self):
       print('Routing Table  (source,dest)(neighbor,cost)\n-------------')
@@ -89,19 +109,57 @@ class Server:
         if(label[1] == self.routingTable[label][0]):
           neighbors.append(label[1])
       return neighbors
+    
+    def getRemotePorts(self):
+      result = [self.lookup[label][1] for label in self.lookup if self.id not in label]
+      result = [int(port) for port in result]
+      return result
+
+    #socket functions
+    def create_socket(self, port):
+      chat_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+      chat_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+      chat_socket.bind(('localhost', port))
+      chat_socket.listen(5)
+      print(f"Server Listening on port {port}")
+      return chat_socket
+
+    def server(self, chat_socket):
+       while True:
+          client_socket, client_address = chat_socket.accept()
+          print(f'Connection from {client_address}')
+          threading.Thread(target=self.handle_client, args=(client_socket,)).start()
+
+    def handle_client(self, client_socket):
+      while True:
+        data = client_socket.recv(1024)
+        if not data:
+          break
+
+        recvd_dict = pickle.loads(data)
+
+        #the data is going to be the routing tables
+        print(f'Received Message: {recvd_dict}')
+        #self.updateTable(data)
+      client_socket.close()  
+
+    def client(self, remote_ports):   
+       while True:
+          time.sleep(3)
+          message_dict = self.routingTable
+          message_pickle = pickle.dumps(message_dict)
+
+          for remote_port in remote_ports:
+            try:
+              client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+              client_socket.connect(('localhost', remote_port))
+              client_socket.sendall(message_pickle)
+            except Exception as e:
+              print(f'Error: could not connect to port: {remote_port}: {e}')
+              continue
+            client_socket.close()
 
 #pull the file name from the command line
 path = sys.argv[1]
-print("file:", path)
 #create the servers, for now just create all in one terminal for algorithm testing
-server = Server(file=path)
-server2 = Server(file='topology2.txt')
-#every 10 seconds, send the routing table updates
-#while True:
-#  time.sleep(2)
-#  for neighbor in server.getNeighbors():
-#    send = server.sendTable()
-#    print(send)
-#    #send server2 table to server 1
-#    send2 = server2.sendTable()
-#    server.recieveTable(send2)
+server1 = Server(file=path)
