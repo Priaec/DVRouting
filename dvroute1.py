@@ -9,9 +9,12 @@ class Server:
     #routingTable: Will have eventually a given entry for all nodes in the network, will have neighbor and cost
 
     #construct the server
-    def __init__(self, file):
+    def __init__(self, file, interval):
       self.numServers, self.numNeighbors, self.lookup, self.routingTable, self.id = self.readConfig(file)
       self.ip, self.port = self.getIPPort()
+      #interval between table sends
+      self.interval = int(interval)
+      self.remotePorts = self.getRemotePorts()
       #create the socket to listen
       client_socket = self.create_socket(int(self.port))
       server_thread = threading.Thread(target=self.server, args=(client_socket,))
@@ -20,10 +23,45 @@ class Server:
 
       #create separate threads that will handle their own connection between this server and the remote port
       print(f'remote ports: {self.getRemotePorts()}')
-      client_thread = threading.Thread(target=self.client, args=(self.getRemotePorts(),))
+      #preserve a shared datastructure with the outside thread
+      client_thread = threading.Thread(target=self.client, args=(self.interval,))
       client_thread.start()
-      client_thread.join()
 
+      #listen for any arguments
+      while True:
+        command = input('Enter a command: ').lower()
+        args = command.split(' ')
+        print(f'Command: {args}')
+        if(args[0] == 'update'):
+          src = args[1]
+          dst = args[2]
+          cost = int(args[3])
+          #look through my routing table and pull the value with this information
+          if((src, dst) in self.routingTable):
+            entry = self.routingTable[(src,dst)]
+            print(f'entry {(src, dst)} exists')
+            self.routingTable[(src, dst)] = (entry[0] ,cost)
+          
+        if(command == 'd' or command == 'display'):
+          self.prettyPrintTable()
+
+        if(args[0] == 'disable'):
+          key = args[1]
+          if(key not in self.lookup):
+            print(f'Could not find server with ID: {key}')
+            break
+          self.lookup.pop(key)
+          print(f'remote ports: {self.getRemotePorts()}')
+          #delete all values with given serverID
+          for label in list(self.routingTable):
+            print(f"label: {label}")
+            if(label[1] == key or label[0] == key):
+              self.routingTable.pop(label)
+
+        if(command == 'exit'):
+          break
+                  
+      client_thread.join()
       server_thread.join()
       return
     
@@ -51,10 +89,15 @@ class Server:
       return numServers, numNeighbors, lookup, table, id
     
     def recieveTable(self, table):
+      server_IDs = list(self.lookup.keys())
+      for label in list(table.keys()):
+        if label[0] not in server_IDs or label[1] not in server_IDs:
+          del table[label]
+      
       #if i have not seen this key in my table, then add it in, otherwise do nothing
       for label in table:
-        if label not in self.routingTable:
-          self.routingTable[label] = table[label]
+        if (label not in self.routingTable):
+            self.routingTable[label] = table[label]
       return self.updateTable(table)
 
     def updateTable(self, table):
@@ -64,11 +107,11 @@ class Server:
         #if the value does not exist, just add it into the dictionary
         neighbor, cost = table[label]
         #compare this result with mine
-        print(self.routingTable[label])
         currentNeighbor, currentCost = self.routingTable[label]
         if((cost < currentCost) or (label not in self.routingTable)):
           self.routingTable[label] = (neighbor, cost)
-      return self.prettyPrintTable()
+      #self.prettyPrintTable()
+      return
     
     def sendTable(self):
       #send table to nearest neighbors
@@ -127,7 +170,7 @@ class Server:
     def server(self, chat_socket):
        while True:
           client_socket, client_address = chat_socket.accept()
-          print(f'Connection from {client_address}')
+          #print(f'Connection from {client_address}')
           threading.Thread(target=self.handle_client, args=(client_socket,)).start()
 
     def handle_client(self, client_socket):
@@ -137,19 +180,17 @@ class Server:
           break
 
         recvd_dict = pickle.loads(data)
-
-        #the data is going to be the routing tables
-        print(f'Received Message: {recvd_dict}')
-        #self.updateTable(data)
+        self.recieveTable(recvd_dict)
       client_socket.close()  
 
-    def client(self, remote_ports):   
-       while True:
-          time.sleep(3)
+    def client(self, interval):   
+        while True:
+          time.sleep(interval)
           message_dict = self.routingTable
           message_pickle = pickle.dumps(message_dict)
 
-          for remote_port in remote_ports:
+          print(f'list of my remote ports: {self.getRemotePorts()}')
+          for remote_port in self.getRemotePorts():
             try:
               client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
               client_socket.connect(('localhost', remote_port))
@@ -161,5 +202,6 @@ class Server:
 
 #pull the file name from the command line
 path = sys.argv[1]
+interval = sys.argv[2]
 #create the servers, for now just create all in one terminal for algorithm testing
-server1 = Server(file=path)
+server1 = Server(file=path, interval=interval)
