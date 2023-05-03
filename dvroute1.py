@@ -12,6 +12,7 @@ class Server:
     def __init__(self, file, interval):
       self.numServers, self.numNeighbors, self.lookup, self.routingTable, self.id = self.readConfig(file)
       self.ip, self.port = self.getIPPort()
+      self.packets = 0
       #interval between table sends
       self.interval = int(interval)
       self.remotePorts = self.getRemotePorts()
@@ -44,6 +45,17 @@ class Server:
           
         if(command == 'd' or command == 'display'):
           self.prettyPrintTable()
+
+        if(command == 'step'):
+          print(f'Sending Table id: {self.id}')
+          self.sendTables()
+
+        if(command == 'packets' or command == 'p'):
+          print(f'Packets since last check: {str(self.packets)}')
+          self.packets = 0
+
+        if(command == 'crash' or command == 'c'):
+          break
 
         if(args[0] == 'disable'):
           key = args[1]
@@ -181,6 +193,7 @@ class Server:
 
         recvd_dict = pickle.loads(data)
         self.recieveTable(recvd_dict)
+        self.packets += 1
       client_socket.close()  
 
     def client(self, interval):   
@@ -190,15 +203,18 @@ class Server:
           message_pickle = pickle.dumps(message_dict)
 
           print(f'list of my remote ports: {self.getRemotePorts()}')
-          for remote_port in self.getRemotePorts():
-            try:
-              client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-              client_socket.connect(('localhost', remote_port))
-              client_socket.sendall(message_pickle)
-            except Exception as e:
-              print(f'Error: could not connect to port: {remote_port}: {e}')
-              continue
-            client_socket.close()
+          self.sendTables()
+
+    def sendTables(self):
+      for remote_port in self.getRemotePorts():
+        try:
+          client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+          client_socket.connect(('localhost', remote_port))
+          client_socket.sendall(pickle.dumps(self.routingTable))
+        except Exception as e:
+          print(f'Error: could not connect to port: {remote_port}: {e}')
+          continue
+        client_socket.close()
 
 #pull the file name from the command line
 path = sys.argv[1]
