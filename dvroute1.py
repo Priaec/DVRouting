@@ -1,5 +1,8 @@
-import sys
+import threading
+import socket
+import pickle
 import time
+import sys
 
 class Server:
     #id, num servers, num neighbors, lookup
@@ -94,11 +97,11 @@ print("file:", path)
 server = Server(file=path)
 server2 = Server(file='topology2.txt')
 #every 10 seconds, send the routing table updates
-while True:
-  time.sleep(2)
-  for neighbor in server.getNeighbors():
-    send = server.sendTable()
-    print(send)
-    #send server2 table to server 1
-    send2 = server2.sendTable()
-    server.recieveTable(send2)
+#while True:
+#  time.sleep(2)
+#  for neighbor in server.getNeighbors():
+#    send = server.sendTable()
+#    print(send)
+#    #send server2 table to server 1
+#    send2 = server2.sendTable()
+#    server.recieveTable(send2)
