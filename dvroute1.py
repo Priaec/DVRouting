@@ -7,7 +7,9 @@ import sys
 class Server:
     #id, num servers, num neighbors, lookup
     #routingTable: Will have eventually a given entry for all nodes in the network, will have neighbor and cost
-
+    #routing Table
+    #(src, dst) => cost
+ 
     #construct the server
     def __init__(self, file, interval):
       self.numServers, self.numNeighbors, self.lookup, self.routingTable, self.id = self.readConfig(file)
@@ -40,8 +42,9 @@ class Server:
           #look through my routing table and pull the value with this information
           if((src, dst) in self.routingTable):
             entry = self.routingTable[(src,dst)]
-            print(f'entry {(src, dst)} exists')
-            self.routingTable[(src, dst)] = (entry[0] ,cost)
+            print(f'Updating {(src, dst)} to {cost}')
+            self.routingTable[(src, dst)] = cost
+            self.routingTable[(dst, src)] = cost
           
         if(command == 'd' or command == 'display'):
           self.prettyPrintTable()
@@ -97,32 +100,36 @@ class Server:
           else:
             id = arguments[0]
             key = (arguments[0], arguments[1])
-            table[key] = (arguments[1],int(arguments[2]))
+            table[key] = int(arguments[2])
+        #cost to itself is 0
+        table[(arguments[0], arguments[0])] = 0
       return numServers, numNeighbors, lookup, table, id
     
     def recieveTable(self, table):
       server_IDs = list(self.lookup.keys())
-      for label in list(table.keys()):
-        if label[0] not in server_IDs or label[1] not in server_IDs:
-          del table[label]
+      #for label in list(table.keys()):
+      #  if label[0] not in server_IDs or label[1] not in server_IDs:
+      #    del table[label]
       
       #if i have not seen this key in my table, then add it in, otherwise do nothing
       for label in table:
         if (label not in self.routingTable):
             self.routingTable[label] = table[label]
-      return self.updateTable(table)
+      self.updateTable(table)
+      return
 
     def updateTable(self, table):
       #compare results with given entries
       for label in table:
         #entries are denotes as pair keys
         #if the value does not exist, just add it into the dictionary
-        neighbor, cost = table[label]
+        cost = table[label]
         #compare this result with mine
-        currentNeighbor, currentCost = self.routingTable[label]
+        currentCost = self.routingTable[label]
         if((cost < currentCost) or (label not in self.routingTable)):
-          self.routingTable[label] = (neighbor, cost)
+          self.routingTable[label] = cost
       #self.prettyPrintTable()
+      self.refactorTable()
       return
     
     def sendTable(self):
@@ -135,6 +142,38 @@ class Server:
         result[label] = self.routingTable[label]
       return result
     
+    #check all the values
+    def refactorTable(self):
+      for label in self.routingTable:
+        src = label[0]
+        dst = label[1]
+        #only want to consider out entries to update, not anyone elses
+        if src != self.id:
+          continue
+        #If we are visiting the index with 0 value, just skip over
+        if (src == dst):
+          continue
+        #for our entries, we need to check for a new min cost
+        currCost = self.routingTable[label]
+        newCosts = []
+        print(f'Neighbors: {self.getNeighbors()}')
+        for n in self.getNeighbors():
+          nCost = self.routingTable[(src, n)] 
+          dCost = self.routingTable.get((n, dst))
+          if(dCost == None):
+            dCost = sys.maxsize
+          newCost = nCost + dCost
+          #print(f'{newCost} = {nCost} + {dCost}')
+          newCosts.append(newCost)
+          #fill the newCosts, take the minimum, and compare with current and update
+        if(len(newCosts) <= 0):
+          continue
+        minCost = min(newCosts)
+        if(minCost < currCost):
+          self.routingTable[label] = minCost
+        #otherwise if the minimum is not smaller than existing, just continue
+        return
+
     #return the ip and port of the current server
     def getIPPort(self):
        for label in self.lookup:
@@ -154,15 +193,13 @@ class Server:
         print(label, '   ', self.lookup[label], self.lookup[label][1])
 
     def prettyPrintTable(self):
-      print('Routing Table  (source,dest)(neighbor,cost)\n-------------')
+      print('Routing Table  (src, dst) -> cost\n_______________________')
       for label in self.routingTable:
-        print(label,'    ', self.routingTable[label])
+        print('| ', label[0], ' | ', label[1],' |   ', self.routingTable[label], '   |')
+      print('-----------------------')
 
     def getNeighbors(self):
-      neighbors = []
-      for label in self.routingTable:
-        if(label[1] == self.routingTable[label][0]):
-          neighbors.append(label[1])
+      neighbors = list(self.lookup.keys())
       return neighbors
     
     def getRemotePorts(self):
@@ -202,7 +239,7 @@ class Server:
           message_dict = self.routingTable
           message_pickle = pickle.dumps(message_dict)
 
-          print(f'list of my remote ports: {self.getRemotePorts()}')
+          #print(f'list of my remote ports: {self.getRemotePorts()}')
           self.sendTables()
 
     def sendTables(self):
@@ -214,7 +251,7 @@ class Server:
         except Exception as e:
           print(f'Error: could not connect to port: {remote_port}: {e}')
           continue
-        client_socket.close()
+        client_socket.close()      
 
 #pull the file name from the command line
 path = sys.argv[1]
