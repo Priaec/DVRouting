@@ -70,7 +70,9 @@ class Server:
           #delete all values with given serverID
           for label in list(self.routingTable):
             print(f"label: {label}")
-            if(label[1] == key or label[0] == key):
+            dst = label[1]
+            src = label[0]
+            if(dst == key or src == key):
               self.routingTable.pop(label)
 
         if(command == 'exit'):
@@ -113,7 +115,7 @@ class Server:
       
       #if i have not seen this key in my table, then add it in, otherwise do nothing
       for label in table:
-        if (label not in self.routingTable):
+        if (label not in self.routingTable) and (label[0] in self.getNeighbors()):
             self.routingTable[label] = table[label]
       self.updateTable(table)
       return
@@ -125,7 +127,9 @@ class Server:
         #if the value does not exist, just add it into the dictionary
         cost = table[label]
         #compare this result with mine
-        currentCost = self.routingTable[label]
+        currentCost = self.routingTable.get(label)
+        if(currentCost == None):
+          continue
         if((cost < currentCost) or (label not in self.routingTable)):
           self.routingTable[label] = cost
       #self.prettyPrintTable()
