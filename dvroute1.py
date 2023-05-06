@@ -47,6 +47,7 @@ class Server:
             self.routingTable[(dst, src)] = cost
           
         if(command == 'd' or command == 'display'):
+          print(self.getRemoteIPs())
           self.prettyPrintTable()
 
         if(command == 'step'):
@@ -62,6 +63,10 @@ class Server:
 
         if(args[0] == 'disable'):
           key = args[1]
+          if (key == self.id):
+            print(f'You are not allowed to disable yourself, only connection with others!')
+            continue
+
           if(key not in self.lookup):
             print(f'Could not find server with ID: {key}')
             break
@@ -160,7 +165,7 @@ class Server:
         #for our entries, we need to check for a new min cost
         currCost = self.routingTable[label]
         newCosts = []
-        print(f'Neighbors: {self.getNeighbors()}')
+        #print(f'Neighbors: {self.getNeighbors()}')
         for n in self.getNeighbors():
           nCost = self.routingTable[(src, n)] 
           dCost = self.routingTable.get((n, dst))
@@ -211,6 +216,10 @@ class Server:
       result = [int(port) for port in result]
       return result
 
+    def getRemoteIPs(self):
+      result = [self.lookup[label][0] for label in self.lookup if self.id not in label]
+      print(result)
+
     #socket functions
     def create_socket(self, port):
       chat_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -232,7 +241,8 @@ class Server:
         if not data:
           break
 
-        recvd_dict = pickle.loads(data)
+        recvd_dict, id = pickle.loads(data)
+        print(f"RECEIVED A MESSAGE FROM SERVER {id} ")
         self.recieveTable(recvd_dict)
         self.packets += 1
       client_socket.close()  
@@ -247,16 +257,30 @@ class Server:
           self.sendTables()
 
     def sendTables(self):
+      #pull the ip and ports
+      #for label in self.lookup:
+      #  server_ID = label[0]
+      #  ip_addr = self.lookup[label][0]
+      #  remote_port = self.lookup[label][1]
+      #  #print(f'server_ID: {server_ID}\nip_addr: {ip_addr}')
+      #  if(server_ID == self.id):
+      #    continue
+      #  try:
+      #    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+      #    client_socket.connect((ip_addr, remote_port))
+      #    client_socket.sendall(pickle.dumps((self.routingTable, self.id)))
+      #  except Exception as e:
+      #    print(f'Error: could not connect to IP {ip_addr}\ncound not connect to port {remote_port}')
+      #    continue
       for remote_port in self.getRemotePorts():
         try:
           client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
           client_socket.connect(('localhost', remote_port))
-          client_socket.sendall(pickle.dumps(self.routingTable))
+          client_socket.sendall(pickle.dumps((self.routingTable, self.id)))
         except Exception as e:
-          print(f'Error: could not connect to port: {remote_port}: {e}')
+          #print(f'Error: could not connect to port: {remote_port}: {e}')
           continue
         client_socket.close()      
-
 #pull the file name from the command line
 path = sys.argv[1]
 interval = sys.argv[2]
